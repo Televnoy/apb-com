@@ -438,5 +438,16 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
+    _______________
+    <script>
+    // ... (весь предыдущий код компонента App) ...
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Добавляем событие после инициализации
+        window.dispatchEvent(new Event('app-ready'));
+    </script>
+
 </body>
 </html>
