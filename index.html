@@ -114,14 +114,19 @@
         const AlertCircle = (p) => <Icon name="alert-circle" {...p} />;
 
         const App = () => {
-            // Удаление прелоадера после монтирования React
+           
+//код прелоадера, точнее его задержка и исчезновение
             useEffect(() => {
-                const loader = document.getElementById('preloader');
-                if (loader) {
-                    loader.style.opacity = '0';
-                    setTimeout(() => loader.remove(), 500);
-                }
-            }, []);
+    const loader = document.getElementById('preloader');
+    if (loader) {
+        // Устанавливаем таймер на 2.5 секунды (2500 мс)
+        setTimeout(() => {
+            loader.style.opacity = '0';
+            // Удаляем элемент из DOM после завершения анимации исчезновения
+            setTimeout(() => loader.remove(), 500);
+        }, 2500);
+    }
+    }, []);
 
             // --- Состояние Авторизации ---
             const [isAuthenticated, setIsAuthenticated] = useState(false);
