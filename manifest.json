@@ -1,21 +1,16 @@
 {
-  "name": "Judging System Pro",
-  "short_name": "JudgeApp",
-  "start_url": "/",
+  "name": "Judges Panel PWA",
+  "short_name": "Judges",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
-  "description": "Professional judging tool for beauty contests",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1088/1088537.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "https://cdn-icons-png.flaticon.com/512/1088/1088537.png",
+      "src": "https://cdn-icons-png.flaticon.com/512/442/442396.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
