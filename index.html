@@ -12,20 +12,29 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1088/1088537.png">
 
-    <!-- Подключение шрифтов и Tailwind CSS -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    
     <style>
         body, html { 
             margin: 0; 
             padding: 0; 
             background: #ffffff; 
-            overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
         }
         
-        /* Класс для скрытия прелоадера через opacity (transition в preloader.html) */
+        /* Стили для плавного появления контента */
+        #main-content {
+            opacity: 0;
+            transition: opacity 0.8s ease;
+            width: 100%;
+            height: 100%;
+        }
+
+        .app-loaded #main-content {
+            opacity: 1;
+        }
+
+        /* Скрытие прелоадера */
         .app-loaded #preloader { 
             opacity: 0 !important; 
             pointer-events: none !important; 
@@ -33,46 +42,63 @@
     </style>
 </head>
 <body>
-    <!-- Контейнер для динамической загрузки прелоадера -->
+    <!-- Контейнер для прелоадера -->
     <div id="preloader-placeholder"></div>
 
-    <!-- Корневой элемент React приложения -->
-    <div id="root"></div>
+    <!-- Контейнер, куда мы загрузим judging.html -->
+    <div id="main-content"></div>
 
     <script>
-        // 1. Загружаем прелоадер из отдельного файла сразу при старте
+        // 1. Сначала загружаем прелоадер
         fetch('preloader.html')
             .then(response => response.text())
             .then(html => {
                 document.getElementById('preloader-placeholder').innerHTML = html;
-            })
-            .catch(err => console.error('Ошибка загрузки прелоадера:', err));
+            });
 
-        // 2. Слушаем событие готовности приложения от app.jsx
+        // 2. Загружаем основное приложение (judging.html)
+        // Мы используем iframe или fetch. Fetch лучше для PWA, чтобы сохранить единое окно.
+        fetch('judging.html')
+            .then(response => response.text())
+            .then(html => {
+                const content = document.getElementById('main-content');
+                content.innerHTML = html;
+
+                // Выполняем скрипты из загруженного файла вручную, 
+                // так как innerHTML не исполняет <script> автоматически
+                const scripts = content.getElementsByTagName('script');
+                for (let i = 0; i < scripts.length; i++) {
+                    const script = document.createElement('script');
+                    if (scripts[i].src) {
+                        script.src = scripts[i].src;
+                    } else {
+                        script.textContent = scripts[i].textContent;
+                    }
+                    document.body.appendChild(script);
+                }
+
+                // Сигнализируем о готовности (в judging.html должен быть вызов этого события или таймер)
+                // Если в judging.html нет dispatchEvent, сработает этот запасной вариант:
+                setTimeout(() => {
+                    document.documentElement.classList.add('app-loaded');
+                }, 1500);
+            })
+            .catch(err => {
+                console.error('Ошибка загрузки приложения:', err);
+                document.body.innerHTML = 'Ошибка загрузки приложения. Проверьте наличие файла judging.html';
+            });
+
+        // Слушаем событие готовности, если оно придет из скриптов judging.html
         window.addEventListener('app-ready', () => {
-            // Небольшая задержка, чтобы пользователь успел увидеть анимацию 
-            // и чтобы React успел отрисовать первый кадр
-            setTimeout(() => {
-                document.documentElement.classList.add('app-loaded');
-            }, 600);
+            document.documentElement.classList.add('app-loaded');
         });
     </script>
 
-    <!-- Подключение React и Babel для обработки JSX на лету -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Основной файл приложения -->
-    <script type="text/babel" src="app.jsx"></script>
-
-    <!-- Регистрация Service Worker для PWA -->
+    <!-- Регистрация Service Worker -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('Service Worker зарегистрирован'))
-                    .catch(err => console.log('Ошибка SW:', err));
+                navigator.serviceWorker.register('sw.js').catch(console.error);
             });
         }
     </script>
