@@ -1,37 +1,37 @@
-const { useState, useEffect, useRef } = React;
-
-// Адаптация иконок Lucide для браузерной среды
-const { 
-    Trash2, X, Plus, Camera, RotateCw, Paperclip, ChevronDown, Send, Lock, User, MapPin, CheckCircle2, AlertCircle 
-} = (() => {
-    const Icon = (name) => (props) => (
-        <svg 
-            width={props.size || 24} 
-            height={props.size || 24} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            className={props.className}
-            onClick={props.onClick}
-        >
-            <use href={`#lucide-${name.toLowerCase()}`} />
-        </svg>
-    );
-    return {
-        Trash2: Icon('trash-2'), X: Icon('x'), Plus: Icon('plus'), Camera: Icon('camera'),
-        RotateCw: Icon('rotate-cw'), Paperclip: Icon('paperclip'), ChevronDown: Icon('chevron-down'),
-        Send: Icon('send'), Lock: Icon('lock'), User: Icon('user'), MapPin: Icon('map-pin'),
-        CheckCircle2: Icon('check-circle'), AlertCircle: Icon('alert-circle')
-    };
-})();
-
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Trash2, X, Plus, Camera, RotateCw, Paperclip, ChevronDown, Send, Lock, User, MapPin, CheckCircle2, AlertCircle
-} from 'lucide-react';
+
+// --- Icon Sprite Adapter ---
+// Этот компонент заменяет оригинальные иконки Lucide, используя ваш HTML-спрайт
+const Icon = ({ name, size = 24, className = '', ...props }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={`lucide lucide-${name} ${className}`}
+    {...props}
+  >
+    <use href={`#${name}`} />
+  </svg>
+);
+
+const Trash2 = (p) => <Icon name="trash-2" {...p} />;
+const X = (p) => <Icon name="x" {...p} />;
+const Plus = (p) => <Icon name="plus" {...p} />;
+const Camera = (p) => <Icon name="camera" {...p} />;
+const RotateCw = (p) => <Icon name="rotate-cw" {...p} />;
+const Paperclip = (p) => <Icon name="paperclip" {...p} />;
+const ChevronDown = (p) => <Icon name="chevron-down" {...p} />;
+const Send = (p) => <Icon name="send" {...p} />;
+const Lock = (p) => <Icon name="lock" {...p} />;
+const User = (p) => <Icon name="user" {...p} />;
+const MapPin = (p) => <Icon name="map-pin" {...p} />;
+const CheckCircle2 = (p) => <Icon name="check-circle-2" {...p} />;
+const AlertCircle = (p) => <Icon name="alert-circle" {...p} />;
+// ----------------------------
 
 const App = () => {
   // --- Состояние Авторизации ---
@@ -420,7 +420,3 @@ const App = () => {
 };
 
 export default App;
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
