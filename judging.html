@@ -437,16 +437,22 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-    </script>
-    _______________
-    <script>
-    // ... (весь предыдущий код компонента App) ...
+   <script>
+        // Скрипт для обеспечения корректного отображения после прелоадера
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("Judging page loaded successfully.");
+            
+            // Если используется внешний прелоадер, который скрывает body, 
+            // принудительно показываем контент
+            document.body.style.opacity = '1';
+            document.body.style.visibility = 'visible';
+        });
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-
-        // Добавляем событие после инициализации
-        window.dispatchEvent(new Event('app-ready'));
+        // Обработка ошибок загрузки
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('Error: ' + msg + '\nScript: ' + url + '\nLine: ' + lineNo);
+            return false;
+        };
     </script>
 
 </body>
