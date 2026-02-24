@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard | Live Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #F4F7F6; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="pb-10">
+
+    <nav class="sticky top-0 z-50 glass border-b border-gray-200 px-6 py-4">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <h1 class="text-lg font-semibold tracking-tight flex items-center gap-2">
+                <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                LIVE: Сбор данных
+            </h1>
+            <div class="flex gap-4">
+                <button onclick="clearDatabase()" class="text-xs font-medium text-gray-400 hover:text-red-500 transition-colors uppercase tracking-widest">
+                    Очистить базу
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Последние результаты</span>
+                    <button onclick="fetchData()" class="text-gray-400 hover:rotate-180 transition-transform duration-500">
+                        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-50">
+                                <th class="px-6 py-4 font-medium">Город</th>
+                                <th class="px-6 py-4 font-medium">Судья</th>
+                                <th class="px-6 py-4 font-medium">ID</th>
+                                <th class="px-6 py-4 font-medium">Балл</th>
+                                <th class="px-6 py-4 font-medium">Место</th>
+                                <th class="px-6 py-4 font-medium text-right">Фото</th>
+                            </tr>
+                        </thead>
+                        <tbody id="live-table-body" class="text-sm">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="bg-black rounded-3xl p-6 text-white shadow-2xl">
+                <div class="flex items-center gap-2 mb-6">
+                    <i data-lucide="sparkles" class="w-5 h-5 text-purple-400"></i>
+                    <span class="text-xs font-semibold uppercase tracking-[0.2em]">AI Ассистент</span>
+                </div>
+                
+                <div id="ai-response" class="text-sm font-light leading-relaxed text-gray-300 min-h-[100px] mb-6">
+                    Задайте вопрос по данным судейства...
+                </div>
+
+                <div class="relative">
+                    <textarea id="ai-prompt" 
+                        class="w-full bg-white/10 border border-white/10 rounded-2xl p-4 text-sm focus:outline-none focus:border-purple-500 transition-all placeholder:text-gray-500" 
+                        rows="3" 
+                        placeholder="Напр: Сделай саммари по комментариям из Москвы за сегодня"></textarea>
+                    <button onclick="askAI()" class="mt-4 w-full bg-white text-black py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-purple-400 transition-colors">
+                        Анализировать
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl p-6 border border-gray-100">
+                <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400 block mb-4">Статистика дня</span>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="p-4 bg-gray-50 rounded-2xl">
+                        <div id="count-reports" class="text-2xl font-semibold mono">0</div>
+                        <div class="text-[9px] text-gray-400 uppercase mt-1">Отчетов</div>
+                    </div>
+                    <div class="p-4 bg-gray-50 rounded-2xl">
+                        <div id="avg-score" class="text-2xl font-semibold mono">0</div>
+                        <div class="text-[9px] text-gray-400 uppercase mt-1">Ср. балл</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        // 1. Функция получения данных (Live)
+        async function fetchData() {
+            try {
+                const response = await fetch('get_data.php');
+                const data = await response.json();
+                renderTable(data);
+            } catch (err) {
+                console.error("Ошибка обновления:", err);
+            }
+        }
+
+        function renderTable(data) {
+            const body = document.getElementById('live-table-body');
+            body.innerHTML = data.map(row => `
+                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <td class="px-6 py-4 font-semibold text-[11px]">${row.city}</td>
+                    <td class="px-6 py-4 text-gray-500">${row.judge_name}</td>
+                    <td class="px-6 py-4 mono">${row.participant_number}</td>
+                    <td class="px-6 py-4 font-bold text-indigo-600">${row.score}</td>
+                    <td class="px-6 py-4"><span class="px-2 py-1 bg-gray-100 rounded text-[10px] font-bold">${row.place} место</span></td>
+                    <td class="px-6 py-4 text-right">
+                        ${row.photos_list ? `<i data-lucide="image" class="w-4 h-4 ml-auto text-blue-400"></i>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+            
+            document.getElementById('count-reports').innerText = data.length;
+            lucide.createIcons();
+        }
+
+        // 2. Функция для AI
+        async function askAI() {
+            const prompt = document.getElementById('ai-prompt').value;
+            const resDiv = document.getElementById('ai-response');
+            resDiv.innerText = "Думаю...";
+            
+            // Здесь отправляем prompt + все данные в ваш AI движок
+            // В реальности тут будет fetch('ai_handler.php')
+            setTimeout(() => {
+                resDiv.innerText = "AI Анализ: Судьи в Перми чаще хвалят чистоту проборов, в то время как в Москве акцент на скорости. Средний балл участника 05 выше в дисциплине Дреды.";
+            }, 1500);
+        }
+
+        // Обновлять данные каждые 10 секунд
+        setInterval(fetchData, 10000);
+        fetchData();
+    </script>
+</body>
+</html>
