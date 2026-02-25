@@ -171,48 +171,75 @@
             };
 
             const startCamera = async (id) => {
-                if (isCurrentSubmitted) return;
-                setActiveCamera(id);
-                try {
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                    const constraints = {
-                        video: { facingMode: { ideal: facingMode }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 0.5625 } },
-                        audio: false
-                    };
-                    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    setStream(mediaStream);
-                    setTimeout(() => {
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = mediaStream;
-                            videoRef.current.play();
-                        }
-                    }, 100);
-                } catch (err) {
-                    setActiveCamera(null);
-                }
-            };
+    if (isCurrentSubmitted) return;
+    setActiveCamera(id);
+    try {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Оптимальные настройки для мобильных устройств
+        const constraints = {
+            video: { 
+                facingMode: { ideal: facingMode },
+                // Запрашиваем высокое разрешение, браузер сам адаптирует под экран
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            },
+            audio: false
+        };
 
-            const takePhoto = () => {
-                if (!videoRef.current || isCurrentSubmitted) return;
-                const canvas = document.createElement('canvas');
-                const v = videoRef.current;
-                canvas.width = v.videoWidth;
-                canvas.height = v.videoHeight;
-                const ctx = canvas.getContext('2d');
-                if (facingMode === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-                ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-                const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
-                setParticipants(prev => prev.map(p => p.id === activeCamera ? { ...p, photos: [...p.photos, photoUrl] } : p));
-                stopCamera();
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        setStream(mediaStream);
+        
+        if (videoRef.current) {
+            videoRef.current.srcObject = mediaStream;
+            // Ждем загрузки метаданных, чтобы видео отобразилось корректно
+            videoRef.current.onloadedmetadata = () => {
+                videoRef.current.play();
             };
+        }
+    } catch (err) {
+        console.error("Ошибка камеры:", err);
+        setActiveCamera(null);
+        alert("Не удалось получить доступ к камере. Проверьте разрешения и HTTPS.");
+    }
+};
 
-            const stopCamera = () => {
-                if (stream) stream.getTracks().forEach(track => track.stop());
-                setStream(null);
-                setActiveCamera(null);
-            };
+const takePhoto = () => {
+    if (!videoRef.current || !activeCamera) return;
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    
+    // Берем натуральные размеры видеопотока (без искажений CSS)
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    const ctx = canvas.getContext('2d');
+
+    // Если фронтальная камера — зеркалим фото
+    if (facingMode === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+    }
+
+    // Рисуем кадр "как есть" из потока
+    ctx.drawImage(video, 0, 0, width, height);
+
+    // Сохраняем с хорошим качеством
+    const photoUrl = canvas.toDataURL('image/jpeg', 0.9);
+    
+    setParticipants(prev => prev.map(p => 
+        p.id === activeCamera ? { ...p, photos: [...p.photos, photoUrl] } : p
+    ));
+    
+    stopCamera();
+};
+
 
             const toggleFacingMode = () => {
                 const newMode = facingMode === 'user' ? 'environment' : 'user';
