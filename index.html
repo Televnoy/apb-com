@@ -171,42 +171,103 @@
             };
 
             const startCamera = async (id) => {
-                if (isCurrentSubmitted) return;
-                setActiveCamera(id);
-                try {
-                    if (stream) {
-                        stream.getTracks().forEach(track => track.stop());
-                    }
-                    const constraints = {
-                        video: { facingMode: { ideal: facingMode }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 0.5625 } },
-                        audio: false
-                    };
-                    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-                    setStream(mediaStream);
-                    setTimeout(() => {
-                        if (videoRef.current) {
-                            videoRef.current.srcObject = mediaStream;
-                            videoRef.current.play();
-                        }
-                    }, 100);
-                } catch (err) {
-                    setActiveCamera(null);
-                }
-            };
+    if (isCurrentSubmitted) return;
+    setActiveCamera(id);
+    try {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
 
-            const takePhoto = () => {
-                if (!videoRef.current || isCurrentSubmitted) return;
-                const canvas = document.createElement('canvas');
-                const v = videoRef.current;
-                canvas.width = v.videoWidth;
-                canvas.height = v.videoHeight;
-                const ctx = canvas.getContext('2d');
-                if (facingMode === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-                ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-                const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
-                setParticipants(prev => prev.map(p => p.id === activeCamera ? { ...p, photos: [...p.photos, photoUrl] } : p));
-                stopCamera();
+        // Используем более гибкие настройки, чтобы избежать ошибок на разных моделях
+        const constraints = {
+            video: { 
+                facingMode: { ideal: facingMode },
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            },
+            audio: false
+        };
+
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        // Важно: Сначала сохраняем поток в стейт
+        setStream(mediaStream);
+
+        // Привязываем поток к видео сразу, как только элемент появится в DOM
+        if (videoRef.current) {
+            videoRef.current.srcObject = mediaStream;
+            // Явный вызов play() для мобильных браузеров
+            videoRef.current.onloadedmetadata = () => {
+                videoRef.current.play().catch(e => console.error("Play error:", e));
             };
+        }
+    } catch (err) {
+        console.error("Camera error:", err);
+        setActiveCamera(null);
+        alert("Ошибка доступа к камере. Убедитесь, что сайт открыт через HTTPS.");
+    }
+};
+
+const takePhoto = () => {
+    if (!videoRef.current || !activeCamera) return;
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    
+    // Используем РЕАЛЬНЫЕ размеры видеопотока
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+
+    // Отражение для фронталки
+    if (facingMode === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
+    setParticipants(prev => prev.map(p => 
+        p.id === activeCamera ? { ...p, photos: [...p.photos, photoUrl] } : p
+    ));
+    
+    stopCamera();
+};
+
+// В JSX (внутри return) замени блок {activeCamera && (...)} на этот:
+{activeCamera && (
+    <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center animate-in">
+        {/* Добавлены атрибуты playsInline и muted для автозапуска в Safari/Chrome */}
+        <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            muted 
+            className="w-full h-full object-contain bg-black" 
+        />
+        
+        <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-gradient-to-b from-black/60 to-transparent">
+            <button onClick={stopCamera} className="text-white bg-black/20 backdrop-blur-md p-3 rounded-full">
+                <Icon name="x" size={24} />
+            </button>
+            <button onClick={toggleFacingMode} className="text-white bg-black/20 backdrop-blur-md p-3 rounded-full">
+                <Icon name="rotate-cw" size={24} />
+            </button>
+        </div>
+
+        <div className="absolute bottom-0 left-0 right-0 p-10 pb-20 flex justify-center items-center bg-gradient-to-t from-black/60 to-transparent">
+            <button 
+                onClick={takePhoto} 
+                className="w-20 h-20 bg-white rounded-full border-[6px] border-white/30 flex items-center justify-center active:scale-90 transition-transform shadow-2xl"
+            >
+                <div className="w-16 h-16 bg-white rounded-full border-2 border-black/5" />
+            </button>
+        </div>
+    </div>
+)}
+
 
             const stopCamera = () => {
                 if (stream) stream.getTracks().forEach(track => track.stop());
