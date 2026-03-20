@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>АПБ Комиссарская Панель</title>
+    
+    <!-- PWA & Mobile Optimization -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#3171af">
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-72.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <script src="config.js"></script>
+
+    <!-- Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+
+    <!-- AWS SDK for S3 (Cloud.ru) -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1692.0.min.js"></script>
+
+    <script type="module">
+    import { loginWithKey, updateJudgeProfile, saveEvaluation, changeJudgeKey, uploadPhoto, unbindDevice } from './assets/firebase-db.js';    
+    window.api = { loginWithKey, updateJudgeProfile, saveEvaluation, changeJudgeKey, uploadPhoto, unbindDevice };
+        
+    let deviceId = localStorage.getItem('app_device_id');
+    if (!deviceId) {
+        deviceId = 'dev_' + Math.random().toString(36).substr(2, 12) + Date.now();
+        localStorage.setItem('app_device_id', deviceId);
+    }
+    window.deviceId = deviceId;
+    </script>
+    
+    <style>
+        body {
+            background-color: #F8F8F8;
+            margin: 0;
+            overscroll-behavior-y: contain;
+            -webkit-tap-highlight-color: transparent;
+        }
+        * {
+            font-family: 'Inter', sans-serif !important;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined' !important;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+        }
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+        @keyframes zoom-blur-out {
+            0% { transform: scale(1); filter: blur(0px); opacity: 1; }
+            100% { transform: scale(1.5); filter: blur(20px); opacity: 0; }
+        }
+        .loader-ring {
+            width: 32px;
+            height: 32px;
+            border: 2px solid rgba(0,0,0,0.05);
+            border-top: 2px solid #3171af;
+            border-radius: 50%;
+            animation: spin 0.8s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+        .preloader-exit {
+            animation: zoom-blur-out 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            pointer-events: none;
+        }
+        @keyframes card-appear {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card-animate {
+            animation: card-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        video::-webkit-media-controls {
+            display:none !important;
+        }
+        .photo-item {
+            position: relative;
+        }
+        .delete-overlay {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 24px;
+            height: 24px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            border: 2px solid white;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .penalty-item {
+            background: #f0f7ff;
+            border: 1px solid #d4e4f5;
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #1e293b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-penalty-list {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Прелоадер ---
+        const Preloader = ({ onComplete }) => {
+            const [isExiting, setIsExiting] = useState(false);
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    setIsExiting(true);
+                    setTimeout(onComplete, 800); 
+                }, 2500);
+                return () => clearTimeout(timer);
+            }, [onComplete]);
+
+            return (
+                <div className={`fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center ${isExiting ? 'preloader-exit' : ''}`}>
+                    <div className="mb-8 text-black">
+                        <svg width="120" height="120" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+                            <rect fill="#3171af" width="96" height="96" rx="9.24" ry="9.24"/>
+                            <g fill="#ffffff">
+                                <path d="M33.12,78.03h-3.23l-1.28-2.88h-5.88l-1.21,2.88h-3.15l5.73-12.67h3.14l5.89,12.67Zm-5.47-5.01l-2.03-4.7-1.99,4.7h4.01Z"/>
+                                <path d="M34.8,65.36h11.7v12.67h-2.97v-10.55h-5.76v10.55h-2.97v-12.67Z"/>
+                                <path d="M49.91,65.36h10.99v2.13h-8.02v2.94h3.97c1.1,0,2.01,.12,2.73,.35,.72,.23,1.34,.66,1.85,1.28s.77,1.35,.77,2.19-.26,1.59-.77,2.2c-.52,.61-1.1,1.03-1.76,1.25-.66,.22-1.6,.34-2.81,.34h-6.94v-12.67Zm2.97,10.55h2.89c.92,0,1.57-.04,1.95-.12,.37-.08,.7-.26,.98-.53,.28-.28,.42-.62,.42-1.02,0-.59-.24-1.02-.73-1.28-.48-.27-1.31-.4-2.48-.4h-3.02v3.35Z"/>
+                            </g>
+                            <path fill="#ffffff" d="M81.8,13.1V82.9H14.2V13.1H81.8m3.9-4.03H10.3V86.92H85.7V9.08h0Z"/>
+                        </svg>
+                    </div>
+                    <div className="loader-ring"></div>
+                    <p className="mt-6 text-[10px] font-medium uppercase tracking-[0.3em] text-black opacity-40">АПБ комиссарская панель</p>
+                </div>
+            );
+        };
+
+        const Icon = ({ name, className = "", size = 20 }) => (
+            <span className={`material-symbols-outlined ${className}`} style={{ fontSize: size }}>
+                {name}
+            </span>
+        );
+
+        // Функция сжатия и обрезки изображения до 800x1422 (9:16)
+        const resizeAndCropImage = (base64, targetWidth = 800, targetHeight = 1422) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetWidth;
+                    canvas.height = targetHeight;
+                    const ctx = canvas.getContext('2d');
+
+                    const srcWidth = img.width;
+                    const srcHeight = img.height;
+                    const srcRatio = srcWidth / srcHeight;
+                    const targetRatio = targetWidth / targetHeight;
+
+                    let sourceX, sourceY, sourceWidth, sourceHeight;
+
+                    if (srcRatio > targetRatio) {
+                        sourceHeight = srcHeight;
+                        sourceWidth = srcHeight * targetRatio;
+                        sourceX = (srcWidth - sourceWidth) / 2;
+                        sourceY = 0;
+                    } else {
+                        sourceWidth = srcWidth;
+                        sourceHeight = srcWidth / targetRatio;
+                        sourceX = 0;
+                        sourceY = (srcHeight - sourceHeight) / 2;
+                    }
+
+                    ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = reject;
+                img.src = base64;
+            });
+        };
+
+        // Вспомогательная функция для удаления полей со значением undefined
+        const removeUndefined = (obj) => {
+            if (obj === null || typeof obj !== 'object') return obj;
+            if (Array.isArray(obj)) {
+                return obj.map(item => removeUndefined(item));
+            }
+            const newObj = {};
+            for (const key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                    const value = removeUndefined(obj[key]);
+                    if (value !== undefined) {
+                        newObj[key] = value;
+                    }
+                }
+            }
+            return newObj;
+        };
+
+        // Данные для штрафов
+        const penaltyCategories = {
+            three: [
+                "Опоздание к началу соревнования",
+                "Нарушение команды старт/стоп",
+                "Незавершённая работа после команды стоп или к началу судейства",
+                "Нарушение СанПина на арене соревнований",
+                "Несоответствие модели общим требованиям",
+                "Нарушение дресс-кода участника",
+                "Несоблюдение правил поведения в зоне соревнований",
+                "Отсутствие обязательного инвентаря",
+                "Использование не специализированных для брейдинга укладочных средств",
+                "Использование не специализированных для плетения материалов кроме номинаций, где это разрешено"
+            ],
+            five: [
+                "Несоответствие работы заданию",
+                "Несоблюдение тематики в тех номинациях, где это требуется",
+                "Несоблюдение стартовых условия",
+                "Несоответствие модели требованием номинации",
+                "Несоответствие заданию",
+                "Несоответствие тематике чемпионата",
+                "Несоответствие модели общим требованиям",
+                "Использование инвентаря вне обязательного и рекомендованного списка",
+                "Нарушение требований к цветовой палитре номинации",
+                "Несоблюдение требований по весу причёски",
+                "Отсутствие украшений в номинациях, где это требуется, и присутствие в номинациях, где это не требуется",
+                "Отсутствие постижа в номинациях, где это требуется и присутствие в номинациях, где это не требуется",
+                "Отсутствие костюма и макияжа в номинациях, где это требуется",
+                "Отсутствие термообработки при её необходимости"
+            ],
+            ten: [
+                "Нарушение запрещенных в номинации пунктов"
+            ]
+        };
+
+        function App() {
+            const [loading, setLoading] = useState(true);
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [authStep, setAuthStep] = useState(1); 
+            const [tempJudgeName, setTempJudgeName] = useState('');
+            const [selectedCity, setSelectedCity] = useState('Москва');
+            const [isCityOpen, setIsCityOpen] = useState(false);
+            const [accessKey, setAccessKey] = useState('');
+            const [authError, setAuthError] = useState('');
+
+            const [judgeName, setJudgeName] = useState('');
+            const [eventCity, setEventCity] = useState('');
+            const [discipline, setDiscipline] = useState('Разметка');
+            const [isDisciplineOpen, setIsDisciplineOpen] = useState(false);
+            
+            const [allData, setAllData] = useState({});
+            const [submittedDisciplines, setSubmittedDisciplines] = useState([]);
+            const [history, setHistory] = useState([]);
+            
+            const [openSelect, setOpenSelect] = useState({ id: null, type: null }); // type: 'number'
+            const [toast, setToast] = useState(null);
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+            const [editJudgeName, setEditJudgeName] = useState('');
+            const [editAccessKey, setEditAccessKey] = useState('');
+
+            const [activeCamera, setActiveCamera] = useState(null);
+            const [facingMode, setFacingMode] = useState('environment');
+            const [stream, setStream] = useState(null);
+            const videoRef = useRef(null);
+
+            // Состояние для долгого нажатия на фото
+            const [longPress, setLongPress] = useState({ participantId: null, photoIndex: null, timer: null });
+
+            // Состояние для модального окна выбора штрафа
+            const [penaltyModal, setPenaltyModal] = useState({ visible: false, participantId: null, category: null });
+
+            const [deferredPrompt, setDeferredPrompt] = useState(null);
+            const [showUpdateNotification, setShowUpdateNotification] = useState(false);
+
+            const cities = ['Москва', 'Пермь', 'Екатеринбург', 'Санкт-Петербург','Ростов-на-Дону'];
+            const disciplines = [
+                'Разметка', 'Смешка канекалона', 'Рисунок из брейдов', 'Вплетение комплекта кос',
+                'Боксерские косы', 'Водопад', 'Брейды в хвост', 'Цветной ряд',
+                'Наращивание на микро-косы', 'Каркасные прически', 'Термозамещение', 'Точечные косы',
+                'Брейды без материала', 'Брейды с материалом', 'Микс-прически', 'Технический комплект',
+                'Натуральные дреды', 'Подплетение нат. дредов', 'Творческие номинации', 'Секретная номинация',
+                'Изделие из канекалона', 'Креативная причёска', 'Творческие боксерские косы', 'Творческий водопад',
+                'Творческие брейды в хвост', 'Творческий комплект', 'Женский образ', 'Мужской образ',
+                'Детский образ', 'Командная работа'
+            ];
+            const participantNumbers = Array.from({ length: 100 }, (_, i) => i.toString().padStart(2, '0'));
+
+            // Загрузка сохранённых данных
+            useEffect(() => {
+                const saved = localStorage.getItem('commissar_app_v5_data');
+                const savedSubmitted = localStorage.getItem('commissar_app_v5_submitted');
+                const savedHistory = localStorage.getItem('commissar_app_v5_history');
+                const savedProfile = localStorage.getItem('commissar_app_v5_profile');
+
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    // Преобразуем старые данные: если есть comment и score, превращаем в penalties
+                    Object.keys(parsed).forEach(dis => {
+                        parsed[dis] = parsed[dis].map(p => {
+                            if (p.penalties) return p;
+                            let penalties = [];
+                            if (p.comment) {
+                                try {
+                                    penalties = JSON.parse(p.comment);
+                                    if (!Array.isArray(penalties)) penalties = [];
+                                } catch {
+                                    penalties = p.comment.split(',').map(s => s.trim()).filter(s => s).map(reason => ({ value: p.score || -1, reason }));
+                                }
+                            }
+                            if (p.score && p.score < 0 && penalties.length === 0) {
+                                penalties = [{ value: p.score, reason: "Штраф" }];
+                            }
+                            return {
+                                ...p,
+                                penalties: penalties,
+                                score: undefined,
+                                comment: undefined
+                            };
+                        });
+                    });
+                    setAllData(parsed);
+                }
+                if (savedSubmitted) setSubmittedDisciplines(JSON.parse(savedSubmitted));
+                if (savedHistory) setHistory(JSON.parse(savedHistory));
+                
+                if (savedProfile) {
+                    const profile = JSON.parse(savedProfile);
+                    setJudgeName(profile.name);
+                    setAccessKey(profile.key);
+                    setEditJudgeName(profile.name);
+                    setEditAccessKey(profile.key);
+                    setEventCity(profile.city || 'Москва');
+                    setIsAuthenticated(true);
+                }
+            }, []);
+
+            // Сохранение в localStorage
+            useEffect(() => {
+                if (isAuthenticated) {
+                    localStorage.setItem('commissar_app_v5_data', JSON.stringify(allData));
+                    localStorage.setItem('commissar_app_v5_submitted', JSON.stringify(submittedDisciplines));
+                    localStorage.setItem('commissar_app_v5_history', JSON.stringify(history));
+                }
+            }, [allData, submittedDisciplines, history, isAuthenticated]);
+
+            // PWA
+            useEffect(() => {
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    setDeferredPrompt(e);
+                });
+            }, []);
+
+            useEffect(() => {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('sw.js')
+                        .then((registration) => {
+                            console.log('SW registered:', registration);
+                            setInterval(() => registration.update(), 60 * 60 * 1000);
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        setShowUpdateNotification(true);
+                                    }
+                                });
+                            });
+                        })
+                        .catch(err => console.log('SW registration failed:', err));
+                }
+            }, []);
+
+            const showToast = (message) => {
+                setToast(message);
+                setTimeout(() => setToast(null), 2500);
+            };
+
+            const deviceId = localStorage.getItem('app_device_id') || 'dev_' + Math.random().toString(36).substr(2, 9);
+            if (!localStorage.getItem('app_device_id')) localStorage.setItem('app_device_id', deviceId);
+            
+            // Авторизация
+            const handleAuth = async () => {
+                setAuthError(null);
+                if (!accessKey) {
+                    setAuthError('Введите ключ доступа');
+                    return;
+                }
+
+                try {
+                    const result = await window.api.loginWithKey(accessKey, window.deviceId, tempJudgeName);
+                    
+                    if (result.success) {
+                        const finalName = tempJudgeName || result.user?.displayName || 'Комиссар';
+                        const finalCity = selectedCity || result.user?.city || 'Москва';
+
+                        await window.api.updateJudgeProfile(accessKey, finalName, finalCity);
+
+                        setJudgeName(finalName);
+                        setEventCity(finalCity);
+                        setIsAuthenticated(true);
+
+                        const profileData = { name: finalName, key: accessKey, city: finalCity };
+                        localStorage.setItem('commissar_app_v5_profile', JSON.stringify(profileData));
+                        
+                        if (result.warning) showToast(result.warning);
+                    } else {
+                        setAuthError(result.error);
+                    }
+                } catch (err) {
+                    setAuthError('Ошибка соединения');
+                }
+            };
+            
+            const handleSaveSettings = async () => {
+                try {
+                    let result;
+                    if (editAccessKey !== accessKey) {
+                        result = await window.api.changeJudgeKey(accessKey, editAccessKey, editJudgeName, eventCity);
+                    } else {
+                        result = await window.api.updateJudgeProfile(accessKey, editJudgeName, eventCity);
+                    }
+
+                    if (result && result.success) {
+                        setAccessKey(editAccessKey);
+                        setJudgeName(editJudgeName);
+                        
+                        const newProfile = { name: editJudgeName, key: editAccessKey, city: eventCity };
+                        localStorage.setItem('commissar_app_v5_profile', JSON.stringify(newProfile));
+                        
+                        setIsSettingsOpen(false);
+                        showToast('Настройки сохранены');
+                    } else {
+                        showToast(result?.error || 'Ошибка сохранения');
+                    }
+                } catch (e) {
+                    console.error("Ошибка в handleSaveSettings:", e);
+                    showToast('Системная ошибка: проверьте консоль');
+                }
+            };
+
+            const handleInstallClick = async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') setDeferredPrompt(null);
+            };
+
+            const handleUpdateClick = () => {
+                if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ action: 'skipWaiting' });
+                }
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    window.location.reload();
+                });
+                setShowUpdateNotification(false);
+            };
+
+            // Получаем участников текущей дисциплины
+            const participants = allData[discipline] || [{ id: '1', number: '00', penalties: [], photos: [] }];
+            const isCurrentSubmitted = submittedDisciplines.includes(discipline);
+            
+            // Все занятые номера (для уникальности)
+            const allOccupiedNumbers = Object.values(allData).flat().map(p => p.number);
+
+            const setParticipants = (newParticipants) => {
+                if (isCurrentSubmitted) return;
+                const updater = typeof newParticipants === 'function' ? newParticipants(participants) : newParticipants;
+                setAllData(prev => ({ ...prev, [discipline]: updater }));
+            };
+
+            // Удаление фото
+            const deletePhoto = (participantId, photoIndex) => {
+                setParticipants(prev => prev.map(p => 
+                    p.id === participantId 
+                        ? { ...p, photos: p.photos.filter((_, idx) => idx !== photoIndex) }
+                        : p
+                ));
+                setLongPress({ participantId: null, photoIndex: null, timer: null });
+            };
+
+            // Обработчики долгого нажатия
+            const handlePhotoTouchStart = (participantId, photoIndex) => {
+                const timer = setTimeout(() => {
+                    setLongPress({ participantId, photoIndex, timer: null });
+                }, 500);
+                setLongPress({ participantId, photoIndex, timer });
+            };
+
+            const handlePhotoTouchEnd = () => {
+                if (longPress.timer) clearTimeout(longPress.timer);
+            };
+
+            const handlePhotoTouchCancel = () => {
+                if (longPress.timer) clearTimeout(longPress.timer);
+                setLongPress({ participantId: null, photoIndex: null, timer: null });
+            };
+
+            // Получение доступных (ещё не выбранных) нарушений для участника в данной категории
+            const getAvailablePenalties = (participant, category) => {
+                const allPenalties = penaltyCategories[category] || [];
+                const selectedReasons = participant.penalties.map(p => p.reason);
+                return allPenalties.filter(reason => !selectedReasons.includes(reason));
+            };
+
+            // Добавление штрафа
+            const addPenalty = (participantId, category, reason) => {
+                let value = 0;
+                if (category === 'three') value = -3;
+                else if (category === 'five') value = -5;
+                else if (category === 'ten') value = -10;
+
+                const newPenalty = { value, reason };
+                setParticipants(prev => prev.map(p => 
+                    p.id === participantId 
+                        ? { ...p, penalties: [...p.penalties, newPenalty] }
+                        : p
+                ));
+            };
+
+            // Удаление штрафа
+            const removePenalty = (participantId, index) => {
+                setParticipants(prev => prev.map(p => 
+                    p.id === participantId 
+                        ? { ...p, penalties: p.penalties.filter((_, i) => i !== index) }
+                        : p
+                ));
+            };
+
+            // Вычисление суммы штрафов для участника
+            const totalPenalty = (participant) => {
+                return participant.penalties.reduce((sum, p) => sum + p.value, 0);
+            };
+
+            // Обновление номера участника
+            const updateParticipantNumber = (id, number) => {
+                if (number !== '00' && allOccupiedNumbers.includes(number)) {
+                    showToast('ID уже используется'); return;
+                }
+                setParticipants(prev => prev.map(p => p.id === id ? { ...p, number } : p));
+                setOpenSelect({ id: null, type: null });
+            };
+
+            // ИСПРАВЛЕННАЯ функция отправки (с загрузкой фото и удалением undefined)
+            const sendEvaluation = async (evalData) => {
+                const profile = JSON.parse(localStorage.getItem('commissar_app_v5_profile') || '{}');
+                const fullData = {
+                    ...evalData,
+                    judgeName: judgeName,
+                    city: eventCity,
+                    accessKey: accessKey,
+                    deviceId: window.deviceId
+                };
+
+                try {
+                    // Загружаем все фото и получаем ссылки
+                    const participantsWithUrls = await Promise.all(evalData.participants.map(async (p) => {
+                        const photoUrls = [];
+                        for (let i = 0; i < p.photos.length; i++) {
+                            const base64 = p.photos[i];
+                            const fileName = `judges/${accessKey}/evaluations/${Date.now()}/${p.number}_${i}.jpg`;
+                            const url = await window.api.uploadPhoto(base64, fileName);
+                            photoUrls.push(url);
+                        }
+                        return { ...p, photos: photoUrls };
+                    }));
+
+                    // Формируем данные для отправки: создаём comment из причин через запятую, score = сумма штрафов
+                    const participantsForSend = participantsWithUrls.map(p => {
+                        const comment = p.penalties.map(pen => pen.reason).join(', ');
+                        return {
+                            number: p.number,
+                            photos: p.photos,
+                            score: totalPenalty(p),
+                            comment: comment
+                        };
+                    });
+
+                    const finalData = { 
+                        ...fullData, 
+                        participants: participantsForSend 
+                    };
+                    
+                    // Удаляем поля со значением undefined, иначе Firestore ругается
+                    const cleanedData = removeUndefined(finalData);
+                    
+                    const result = await window.api.saveEvaluation(cleanedData);
+                    if (!result.success) {
+                        throw new Error(result.error || 'Ошибка сохранения в Firebase');
+                    }
+                    console.log("Данные успешно отправлены в Firebase");
+                } catch (e) {
+                    console.error("Ошибка при отправке в Firebase:", e);
+                    showToast("Ошибка: данные не ушли на сервер");
+                    throw e;
+                }
+            };
+
+            // Обновлённый обработчик нажатия кнопки
+            const handleSendReport = async () => {
+                if (submittedDisciplines.includes(discipline)) return;
+
+                try {
+                    // 1. Отправляем в базу данных
+                    await sendEvaluation({
+                        discipline: discipline,
+                        participants: participants,
+                        timestamp: new Date().toISOString()
+                    });
+
+                    // 2. Обновляем локальный статус
+                    const now = new Date();
+                    const timestamp = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                    
+                    const newHistoryEntries = participants.map(p => ({
+                        date: timestamp,
+                        discipline: discipline,
+                        participantId: p.number,
+                        score: totalPenalty(p)
+                    }));
+                    
+                    setHistory(prev => [...newHistoryEntries, ...prev]);
+                    setSubmittedDisciplines(prev => [...prev, discipline]);
+                    showToast('Отчет успешно отправлен');
+                } catch (error) {
+                    showToast('Ошибка отправки, попробуйте снова');
+                }
+            };
+
+            const startCamera = async (id) => {
+                if (isCurrentSubmitted) return;
+                setActiveCamera(id);
+                try {
+                    if (stream) stream.getTracks().forEach(track => track.stop());
+                    const constraints = {
+                        video: { 
+                            facingMode: { ideal: facingMode }, 
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 } 
+                        },
+                        audio: false
+                    };
+                    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    setStream(mediaStream);
+                    setTimeout(() => {
+                        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+                    }, 100);
+                } catch (err) { 
+                    setActiveCamera(null);
+                    showToast('Ошибка доступа к камере');
+                }
+            };
+
+            const takePhoto = async () => {
+                if (!videoRef.current || isCurrentSubmitted) return;
+                
+                const video = videoRef.current;
+                const canvas = document.createElement('canvas');
+                const vWidth = video.videoWidth;
+                const vHeight = video.videoHeight;
+                const targetWidth = 1080;
+                const targetHeight = 1920;
+                const targetRatio = targetWidth / targetHeight;
+
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                const ctx = canvas.getContext('2d');
+
+                let sourceX, sourceY, sourceWidth, sourceHeight;
+                const videoRatio = vWidth / vHeight;
+
+                if (videoRatio > targetRatio) {
+                    sourceHeight = vHeight;
+                    sourceWidth = vHeight * targetRatio;
+                    sourceX = (vWidth - sourceWidth) / 2;
+                    sourceY = 0;
+                } else {
+                    sourceWidth = vWidth;
+                    sourceHeight = vWidth / targetRatio;
+                    sourceX = 0;
+                    sourceY = (vHeight - sourceHeight) / 2;
+                }
+
+                if (facingMode === 'user') {
+                    ctx.translate(canvas.width, 0);
+                    ctx.scale(-1, 1);
+                }
+
+                ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight);
+
+                const photoUrl = canvas.toDataURL('image/jpeg', 0.85);
+                const processedPhoto = await resizeAndCropImage(photoUrl, 800, 1422);
+                
+                setParticipants(prev => prev.map(p => p.id === activeCamera ? { ...p, photos: [...p.photos, processedPhoto] } : p));
+                stopCamera();
+            };
+
+            const stopCamera = () => {
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                setStream(null);
+                setActiveCamera(null);
+            };
+
+            const toggleFacingMode = () => {
+                setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
+                stopCamera();
+            };
+
+            // Проверка готовности к отправке: у всех участников есть номер и не '00'
+            const isReadyToSave = participants.length > 0 && participants.every(p => p.number !== '00');
+
+            if (loading) return <Preloader onComplete={() => setLoading(false)} />;
+
+            if (!isAuthenticated) {
+                return (
+                    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-8">
+                        <div className="w-full max-w-sm space-y-10">
+                            <div className="text-center space-y-2">
+                                <h1 className="text-2xl font-light tracking-tight text-black">Авторизация комиссара</h1>
+                                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-[0.3em]">АПБ комиссарская панель</p>
+                            </div>
+                            <div className="space-y-6">
+                                {authStep === 1 ? (
+                                    <div className="space-y-5">
+                                        <div className="space-y-4">
+                                            <div className="relative">
+                                                <Icon name="person" className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                                                <input type="text" placeholder="Имя комиссара" value={tempJudgeName} onChange={(e) => setTempJudgeName(e.target.value)} className="w-full bg-transparent border-b border-gray-100 py-3 pl-8 text-base font-light outline-none focus:border-black transition-colors" />
+                                            </div>
+                                            <div className="relative">
+                                                <Icon name="location_on" className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                                                <button onClick={() => setIsCityOpen(!isCityOpen)} className="w-full bg-transparent border-b border-gray-100 py-3 pl-8 text-base text-left font-light outline-none flex justify-between items-center">
+                                                    <span>{selectedCity}</span>
+                                                    <Icon name="expand_more" className={`text-gray-300 transition-transform ${isCityOpen ? 'rotate-180' : ''}`} size={18} />
+                                                </button>
+                                                {isCityOpen && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 shadow-xl rounded-xl py-1 z-50 overflow-hidden">
+                                                        {cities.map(c => (
+                                                            <button key={c} onClick={() => { setSelectedCity(c); setIsCityOpen(false); }} className="w-full px-5 py-3 text-left hover:bg-gray-50 text-sm font-light transition-colors">{c}</button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setAuthStep(2)} disabled={!tempJudgeName} className="w-full bg-[#3171af] text-white rounded-full py-4 text-[12px] font-medium uppercase tracking-widest active:scale-95 transition-all disabled:opacity-20">Далее</button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-5">
+                                        <div className="relative">
+                                            <Icon name="lock" className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-300" size={20} />
+                                            <input type="password" placeholder="Ключ доступа" autoFocus value={accessKey} onChange={(e) => setAccessKey(e.target.value)} className="w-full bg-transparent border-b border-gray-100 py-3 pl-8 text-base font-light tracking-widest outline-none focus:border-black" />
+                                        </div>
+                                        {authError && <p className="text-red-500 text-[9px] text-center uppercase font-medium">{authError}</p>}
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setAuthStep(1)} className="w-14 h-14 rounded-full border border-gray-100 flex items-center justify-center text-gray-400 active:scale-90 transition-all"><Icon name="arrow_back" /></button>
+                                            <button onClick={handleAuth} className="flex-1 bg-[#3171af] text-white rounded-full py-4 text-[12px] font-medium uppercase tracking-widest active:scale-95 transition-all">Войти</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen pb-44 relative bg-[#F8F8F8]">
+                    
+                    {/* Баннер установки приложения */}
+                    {deferredPrompt && (
+                        <div className="sticky top-0 z-[70] bg-[#3171af] text-white px-4 py-2 flex justify-between items-center text-[10px]">
+                            <span className="flex items-center gap-2">
+                                <Icon name="download" size={16} /> УСТАНОВИТЕ ПРИЛОЖЕНИЕ
+                            </span>
+                            <button onClick={handleInstallClick} className="bg-white text-[#3171af] px-4 py-1.5 rounded-full text-[9px] font-medium uppercase tracking-wider">ДОБАВИТЬ</button>
+                        </div>
+                    )}
+
+                    {/* Уведомление об обновлении PWA */}
+                    {showUpdateNotification && (
+                        <div className="sticky top-0 z-[70] bg-[#3171af] text-white px-4 py-2 flex justify-between items-center text-[10px]" style={{ top: deferredPrompt ? '40px' : '0' }}>
+                            <span className="flex items-center gap-2"><Icon name="update" size={16} /> ДОСТУПНА НОВАЯ ВЕРСИЯ</span>
+                            <button onClick={handleUpdateClick} className="bg-white text-[#3171af] px-4 py-1.5 rounded-full text-[9px] font-medium uppercase tracking-wider">ОБНОВИТЬ</button>
+                        </div>
+                    )}
+
+                    {toast && (
+                        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[250] bg-black text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4">
+                            <Icon name="info" size={18} className="text-[#3171af]" />
+                            <span className="text-[11px] font-medium uppercase tracking-wider">{toast}</span>
+                        </div>
+                    )}
+                    
+                    <nav className="sticky top-0 z-[60] glass border-b border-gray-100 h-16">
+                        <div className="max-w-md mx-auto px-6 h-full flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className="text-[8px] font-medium text-gray-400 uppercase tracking-widest">Комиссар/Город</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[13px] font-medium uppercase tracking-tight">{judgeName}</span>
+                                    <span className="text-gray-300 font-thin">•</span>
+                                    <span className="text-[13px] font-light text-gray-400 uppercase">{eventCity}</span>
+                                </div>
+                            </div>
+                            <div className="relative">
+                                <button onClick={() => setIsDisciplineOpen(!isDisciplineOpen)} className="flex flex-col items-end">
+                                    <span className="text-[8px] font-medium text-gray-400 uppercase tracking-widest">Номинация</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[13px] font-medium uppercase">{discipline}</span>
+                                        <Icon name="expand_more" className={`text-gray-400 transition-transform ${isDisciplineOpen ? 'rotate-180' : ''}`} size={16} />
+                                    </div>
+                                </button>
+                                {isDisciplineOpen && (
+                                    <div className="absolute top-full right-0 mt-2 bg-white border border-gray-100 shadow-2xl rounded-xl py-1 w-56 z-50 max-h-64 overflow-y-auto no-scrollbar">
+                                        {disciplines.map(d => (
+                                            <button key={d} onClick={() => { setDiscipline(d); setIsDisciplineOpen(false); }} className="w-full px-5 py-3 text-left hover:bg-gray-50 text-[12px] font-light flex justify-between items-center">
+                                                {d} 
+                                                {submittedDisciplines.includes(d) && <Icon name="check_circle" className="text-[#3171af]" size={14} />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-md mx-auto px-6 pt-6 space-y-6">
+                        {isCurrentSubmitted && (
+                            <div className="bg-[#3171af]/10 border border-[#3171af]/20 rounded-xl p-3 flex items-center gap-3 text-[#3171af]">
+                                <Icon name="check_circle" size={18} />
+                                <span className="text-[10px] font-medium uppercase tracking-wider">Отчет отправлен и заблокирован</span>
+                            </div>
+                        )}
+                        
+                        {participants.map((participant, index) => {
+                            const isNumOpen = openSelect.id === participant.id && openSelect.type === 'number';
+                            const total = totalPenalty(participant);
+                            return (
+                                <div key={participant.id} className={`card-animate space-y-2 transition-opacity ${isCurrentSubmitted ? 'opacity-70' : ''}`}>
+                                    <div className="flex items-center justify-between px-1">
+                                        <span className="text-[9px] font-medium text-gray-400 uppercase tracking-widest">Участник {String(index + 1).padStart(2, '0')}</span>
+                                        {!isCurrentSubmitted && participants.length > 1 && (
+                                            <button onClick={() => setParticipants(participants.filter(p => p.id !== participant.id))} className="text-gray-300 hover:text-red-500 transition-colors"><Icon name="delete" size={16} /></button>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-5">
+                                        {/* ID Номер и Штраф */}
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="relative">
+                                                <label className="text-[8px] font-medium text-gray-400 uppercase tracking-[0.2em] mb-1.5 block">ID Номер</label>
+                                                <button 
+                                                    disabled={isCurrentSubmitted} 
+                                                    onClick={() => setOpenSelect({ id: participant.id, type: isNumOpen ? null : 'number' })}
+                                                    className="w-full flex items-center justify-between text-xl font-light outline-none"
+                                                >
+                                                    {participant.number}
+                                                    {!isCurrentSubmitted && <Icon name="expand_more" className="text-gray-200" size={18} />}
+                                                </button>
+                                                {isNumOpen && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 z-[80] h-44 overflow-y-auto no-scrollbar shadow-xl rounded-xl">
+                                                        {participantNumbers.map(n => {
+                                                            const isOcc = allOccupiedNumbers.includes(n) && n !== participant.number && n !== '00';
+                                                            return <div 
+                                                                key={n} 
+                                                                onClick={() => !isOcc && updateParticipantNumber(participant.id, n)} 
+                                                                className={`py-3 px-4 font-light border-b border-gray-50 text-sm ${isOcc ? 'text-red-200 bg-red-50/20' : 'hover:bg-gray-50'}`}
+                                                            >
+                                                                {n} {isOcc && '✖'}
+                                                            </div>
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="text-[8px] font-medium text-gray-400 uppercase tracking-[0.2em] mb-1.5 block">Штраф</label>
+                                                <div className="text-xl font-light text-black">{total}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Список штрафов */}
+                                        {participant.penalties.length > 0 && (
+                                            <div className="space-y-2">
+                                                {participant.penalties.map((p, idx) => (
+                                                    <div key={idx} className="penalty-item">
+                                                        <span className="flex-1">{p.reason}</span>
+                                                        <span className="font-bold mx-2 text-[#3171af]">{p.value}</span>
+                                                        {!isCurrentSubmitted && (
+                                                            <button onClick={() => removePenalty(participant.id, idx)} className="text-gray-500 hover:text-red-500">
+                                                                <Icon name="close" size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Кнопки добавления штрафов */}
+                                        {!isCurrentSubmitted && (
+                                            <div className="flex flex-wrap gap-2">
+                                                <button 
+                                                    className="px-4 py-2 bg-transparent border border-[#3171af] text-[#3171af] rounded-full text-[10px] font-medium uppercase tracking-wider hover:bg-[#3171af] hover:text-white transition-colors"
+                                                    onClick={() => {
+                                                        const available = getAvailablePenalties(participant, 'three');
+                                                        if (available.length === 0) {
+                                                            showToast('Все штрафы -3 уже выбраны');
+                                                            return;
+                                                        }
+                                                        setPenaltyModal({ visible: true, participantId: participant.id, category: 'three' });
+                                                    }}
+                                                >
+                                                    -3
+                                                </button>
+                                                <button 
+                                                    className="px-4 py-2 bg-transparent border border-[#3171af] text-[#3171af] rounded-full text-[10px] font-medium uppercase tracking-wider hover:bg-[#3171af] hover:text-white transition-colors"
+                                                    onClick={() => {
+                                                        const available = getAvailablePenalties(participant, 'five');
+                                                        if (available.length === 0) {
+                                                            showToast('Все штрафы -5 уже выбраны');
+                                                            return;
+                                                        }
+                                                        setPenaltyModal({ visible: true, participantId: participant.id, category: 'five' });
+                                                    }}
+                                                >
+                                                    -5
+                                                </button>
+                                                <button 
+                                                    className="px-4 py-2 bg-transparent border border-[#3171af] text-[#3171af] rounded-full text-[10px] font-medium uppercase tracking-wider hover:bg-[#3171af] hover:text-white transition-colors"
+                                                    onClick={() => {
+                                                        const available = getAvailablePenalties(participant, 'ten');
+                                                        if (available.length === 0) {
+                                                            showToast('Все штрафы -10 уже выбраны');
+                                                            return;
+                                                        }
+                                                        setPenaltyModal({ visible: true, participantId: participant.id, category: 'ten' });
+                                                    }}
+                                                >
+                                                    -10
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* Фото */}
+                                        <div className="flex items-center gap-6 pt-1">
+                                            <button onClick={() => startCamera(participant.id)} disabled={isCurrentSubmitted} className="flex items-center gap-2 text-gray-600 text-[10px] font-medium uppercase tracking-widest disabled:opacity-20">
+                                                <Icon name="photo_camera" size={18} /> Фото
+                                            </button>
+                                            <label className="flex items-center gap-2 text-gray-600 text-[10px] font-medium uppercase tracking-widest cursor-pointer disabled:opacity-20">
+                                                <Icon name="attach_file" size={18} /> Файл
+                                                <input type="file" multiple accept="image/*" className="hidden" disabled={isCurrentSubmitted} onChange={async (e) => {
+                                                    const files = Array.from(e.target.files);
+                                                    const processedPhotos = [];
+                                                    for (const f of files) {
+                                                        const reader = new FileReader();
+                                                        const base64 = await new Promise((resolve) => {
+                                                            reader.onload = (re) => resolve(re.target.result);
+                                                            reader.readAsDataURL(f);
+                                                        });
+                                                        const processed = await resizeAndCropImage(base64, 800, 1422);
+                                                        processedPhotos.push(processed);
+                                                    }
+                                                    setParticipants(prev => prev.map(p => 
+                                                        p.id === participant.id 
+                                                            ? { ...p, photos: [...p.photos, ...processedPhotos] } 
+                                                            : p
+                                                    ));
+                                                }} />
+                                            </label>
+                                        </div>
+
+                                        {participant.photos.length > 0 && (
+                                            <div className="flex gap-2 overflow-x-auto no-scrollbar pt-1">
+                                                {participant.photos.map((p, i) => (
+                                                    <div key={i} className="photo-item flex-shrink-0 relative"
+                                                        onTouchStart={() => handlePhotoTouchStart(participant.id, i)}
+                                                        onTouchEnd={handlePhotoTouchEnd}
+                                                        onTouchCancel={handlePhotoTouchCancel}
+                                                    >
+                                                        <img src={p} className="w-12 h-12 rounded-lg object-cover border border-gray-50" alt="" />
+                                                        {longPress.participantId === participant.id && longPress.photoIndex === i && (
+                                                            <div className="delete-overlay" onClick={(e) => { e.stopPropagation(); deletePhoto(participant.id, i); }}>
+                                                                <Icon name="close" size={16} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </main>
+
+                    <footer className="fixed bottom-0 left-0 right-0 glass border-t border-gray-100 px-6 py-4 pb-8 z-40">
+                        <div className="max-w-md mx-auto">
+                            <div className="flex gap-3">
+                                <button disabled={isCurrentSubmitted} onClick={() => setParticipants([...participants, { id: Date.now().toString(), number: '00', penalties: [], photos: [] }])} className={`w-11 h-11 rounded-full border border-gray-100 flex items-center justify-center active:scale-90 transition-all shadow-sm ${isCurrentSubmitted ? 'opacity-10' : 'bg-white'}`}>
+                                    <Icon name="add" size={24} />
+                                </button>
+                                <button onClick={handleSendReport} disabled={!isReadyToSave || isCurrentSubmitted} className={`flex-1 h-11 rounded-full flex items-center justify-center gap-3 font-medium text-[10px] uppercase tracking-[0.2em] transition-all ${isReadyToSave && !isCurrentSubmitted ? 'bg-[#3171af] text-white shadow-lg active:scale-95' : 'bg-gray-100 text-gray-300 pointer-events-none'}`}>
+                                    <Icon name="send" size={16} /> {isCurrentSubmitted ? 'Отправлено' : 'Отправить отчет'}
+                                </button>
+                                <button onClick={() => setIsSettingsOpen(true)} className="w-11 h-11 rounded-full border border-gray-100 bg-white flex items-center justify-center active:scale-90 transition-all shadow-sm">
+                                    <Icon name="settings" size={24} className="text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+                    </footer>
+
+                    {isSettingsOpen && (
+                        <div className="fixed inset-0 bg-white/60 backdrop-blur-xl z-[150] flex flex-col items-center justify-center p-8">
+                            <div className="w-full max-w-sm bg-white rounded-[32px] p-8 shadow-2xl space-y-8 border border-gray-100 card-animate">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-xl font-light tracking-tight">Настройки</h2>
+                                    <button onClick={() => setIsSettingsOpen(false)} className="text-gray-400"><Icon name="close" /></button>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[8px] font-medium text-gray-400 uppercase tracking-widest block">Логин (Имя)</label>
+                                        <input type="text" value={editJudgeName} onChange={(e) => setEditJudgeName(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl py-4 px-5 text-sm outline-none focus:ring-1 focus:ring-black transition-all" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[8px] font-medium text-gray-400 uppercase tracking-widest block">Пароль (Ключ)</label>
+                                        <input type="text" value={editAccessKey} onChange={(e) => setEditAccessKey(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl py-4 px-5 text-sm outline-none focus:ring-1 focus:ring-black transition-all" />
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <button onClick={handleSaveSettings} className="w-full bg-[#3171af] text-white rounded-full py-4 text-[11px] font-medium uppercase tracking-widest active:scale-95 transition-all">Сохранить</button>
+                                    <button onClick={() => setIsHistoryOpen(true)} className="w-full bg-gray-50 text-gray-600 rounded-full py-4 text-[11px] font-medium uppercase tracking-widest active:scale-95 transition-all">История штрафов</button>
+                                    <button onClick={async () => {
+                                        try {
+                                            const result = await window.api.unbindDevice(accessKey, window.deviceId);
+                                            if (!result.success) console.warn('Не удалось отвязать устройство:', result.error);
+                                        } catch (e) { console.error('Ошибка при отвязке устройства:', e);
+                                        } finally {
+                                            localStorage.clear();
+                                            window.location.reload();
+                                        }
+                                    }} className="w-full bg-red-50 text-red-500 rounded-full py-4 text-[11px] font-medium uppercase tracking-widest active:scale-95 transition-all">Выйти</button>                                
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isHistoryOpen && (
+                        <div className="fixed inset-0 bg-white z-[160] flex flex-col p-8">
+                            <div className="flex justify-between items-center mb-8">
+                                <button onClick={() => setIsHistoryOpen(false)} className="flex items-center gap-2 text-gray-400 text-[11px] font-medium uppercase tracking-widest">
+                                    <Icon name="arrow_back" size={18} /> Назад
+                                </button>
+                                <span className="text-[9px] font-medium text-gray-300 uppercase tracking-[0.3em]">История</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto no-scrollbar rounded-2xl border border-gray-100">
+                                {history.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-300 space-y-4">
+                                        <Icon name="history" size={48} className="opacity-20" />
+                                        <p className="text-[10px] uppercase tracking-widest">История пуста</p>
+                                    </div>
+                                ) : (
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-gray-50 border-b border-gray-100">
+                                            <tr>
+                                                <th className="px-4 py-3 text-[9px] font-semibold text-gray-400 uppercase tracking-wider">ID</th>
+                                                <th className="px-4 py-3 text-[9px] font-semibold text-gray-400 uppercase tracking-wider text-right">Штраф</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {history.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-4">
+                                                        <div className="text-[13px] font-medium">#{item.participantId}</div>
+                                                        <div className="text-[8px] text-gray-400 uppercase">{item.discipline}</div>
+                                                    </td>
+                                                    <td className="px-4 py-4 text-right">
+                                                        <span className="bg-black text-white text-[10px] px-2 py-0.5 rounded font-medium">{item.score}</span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Модальное окно выбора штрафа */}
+                    {penaltyModal.visible && (
+                        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                            <div className="bg-white rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col overflow-hidden shadow-2xl">
+                                <div className="flex justify-between items-center p-4 border-b border-gray-100">
+                                    <span className="text-sm font-medium">Выберите нарушение</span>
+                                    <button onClick={() => setPenaltyModal({ visible: false, participantId: null, category: null })}>
+                                        <Icon name="close" size={20} />
+                                    </button>
+                                </div>
+                                <div className="modal-penalty-list p-2">
+                                    {penaltyModal.category && (() => {
+                                        const participant = participants.find(p => p.id === penaltyModal.participantId);
+                                        if (!participant) return null;
+                                        const available = getAvailablePenalties(participant, penaltyModal.category);
+                                        return available.map((reason, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={() => {
+                                                    addPenalty(penaltyModal.participantId, penaltyModal.category, reason);
+                                                    setPenaltyModal({ visible: false, participantId: null, category: null });
+                                                }}
+                                                className="py-3 px-4 bg-gray-50 rounded-xl text-sm hover:bg-gray-100 active:bg-gray-200 cursor-pointer mb-1"
+                                            >
+                                                {reason}
+                                            </div>
+                                        ));
+                                    })()}
+                                    {penaltyModal.category && getAvailablePenalties(participants.find(p => p.id === penaltyModal.participantId), penaltyModal.category).length === 0 && (
+                                        <div className="text-center text-gray-500 py-4">Все штрафы этой категории уже выбраны</div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeCamera && (
+                        <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center">
+                            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                            <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center bg-gradient-to-b from-black/60 to-transparent">
+                                <button onClick={stopCamera} className="text-white bg-white/10 backdrop-blur-md p-3 rounded-full border border-white/10">
+                                    <Icon name="close" size={28} />
+                                </button>
+                                <button onClick={toggleFacingMode} className="text-white bg-white/10 backdrop-blur-md p-3 rounded-full border border-white/10">
+                                    <Icon name="flip_camera_ios" size={28} />
+                                </button>
+                            </div>
+                            <div className="absolute bottom-0 left-0 right-0 p-10 pb-20 flex justify-center items-center bg-gradient-to-t from-black/60 to-transparent">
+                                <button onClick={takePhoto} className="w-20 h-20 bg-[#3171af] rounded-full border-[6px] border-white/20 flex items-center justify-center active:scale-90 transition-transform">
+                                    <div className="w-14 h-14 bg-white rounded-full border-2 border-black/5" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+    
+</body>
+</html>
