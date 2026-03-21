@@ -1,4 +1,4 @@
-{"name": "АПБ Комиссарская Панель","short_name": "АПБ Комиссар","description": "Приложение для судейства чемпионата АПБ","start_url": "./index.html","display": "standalone","background_color": "#ffffff","theme_color": "#000000","orientation": "portrait","icons": [
+{"name": "АПБ Комиссарская панель","short_name": "АПБ Комиссар","description": "Приложение для судейства чемпионата АПБ","start_url": "./index.html","display": "standalone","background_color": "#ffffff","theme_color": "#000000","orientation": "portrait","icons": [
     {
       "src": "icons/icon-18.png",
       "sizes": "18x18",
